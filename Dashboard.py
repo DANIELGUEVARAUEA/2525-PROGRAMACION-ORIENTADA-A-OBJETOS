@@ -27,7 +27,7 @@ def ejecutar_codigo(ruta_script):
         print(f"Ocurrió un error al ejecutar el código: {e}")
 
 def mostrar_menu():
-    # Define la ruta base donde se encuentra el dashboard.py
+    # Define la ruta base donde se encuentra ubicado el dashboard.py
     ruta_base = os.path.dirname(__file__)
 
     unidades = {
