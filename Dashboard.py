@@ -241,6 +241,6 @@ class DashboardApp:
 # PUNTO DE ENTRADA
 # =========================
 if __name__ == "__main__":
-    # #:MEJORA 11: Solo un entrypoint (sin duplicados ni conflictos).
+    # #:MEJORA 11: sin duplicados ni conflictos
     app = DashboardApp(BASE_DIR)
     app.run()
