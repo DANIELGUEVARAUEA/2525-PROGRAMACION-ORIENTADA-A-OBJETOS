@@ -1,212 +1,246 @@
+from __future__ import annotations
+
+# :MEJORA 1: Quite imports duplicados y deje solo lo necesario.
 import os
 import subprocess
 import sys
+from dataclasses import dataclass
 from pathlib import Path
+from typing import List, Optional
 
 
-# :MEJORA 1: Use pathlib para manejar rutas de forma más segura y multiplataforma.
-# :MEJORA 2:  estructuramos mejor con constantes y funciones pequeñas.
+# :MEJORA 2: Base dir consistente y multiplataforma.
 BASE_DIR = Path(__file__).resolve().parent
 
 
-def leer_codigo(ruta_script: Path) -> str | None:
-    # :MEJORA 3:el archivo con encoding='utf-8' para evitar los errores con tildes/ñ.
-    # :MEJORA 4: Validando para que realmente sea un archivo antes de abrirlo.
-    try:
-        if not ruta_script.is_file():
-            print("El archivo no existe o no es un archivo válido.")
-            return None
+# =========================
+# MODELO
+# =========================
+@dataclass(frozen=True)
+class ScriptItem:
+    """
+    Representa un script Python como un objeto.
+    #:MEJORA 3: Pasamos de strings a objetos (mejor OOP y mantenimiento).
+    """
+    path: Path
 
-        with ruta_script.open("r", encoding="utf-8") as archivo:
-            return archivo.read()
+    @property
+    def name(self) -> str:
+        return self.path.name
 
-    except Exception as e:
-        # :MEJORA 5: Mensaje de error más informativo y centralizado.
-        print(f"Ocurrió un error al leer el archivo: {e}")
+
+# =========================
+# REPOSITORIO (Filesystem)
+# =========================
+class ScriptRepository:
+    """
+    Responsable SOLO de acceder al sistema de archivos.
+    #:MEJORA 4: Separación de las responsabilidades (SRP).
+    """
+
+    def __init__(self, base_dir: Path) -> None:
+        self.base_dir = base_dir
+
+    def get_unidades(self) -> List[Path]:
+        # #:MEJORA 5: Validamos existencia y ordenamos alfabéticamente.
+        if not self.base_dir.exists():
+            return []
+        return sorted([p for p in self.base_dir.iterdir() if p.is_dir()],
+                      key=lambda x: x.name.lower())
+
+    def get_subcarpetas(self, unidad_dir: Path) -> List[Path]:
+        if not unidad_dir.exists():
+            return []
+        return sorted([p for p in unidad_dir.iterdir() if p.is_dir()],
+                      key=lambda x: x.name.lower())
+
+    def get_scripts(self, carpeta_dir: Path) -> List[ScriptItem]:
+        if not carpeta_dir.exists():
+            return []
+
+        scripts = sorted(
+            [p for p in carpeta_dir.iterdir() if p.is_file() and p.suffix == ".py"],
+            key=lambda x: x.name.lower()
+        )
+        return [ScriptItem(p) for p in scripts]
+
+
+# =========================
+# VISOR DE CÓDIGO
+# =========================
+class ScriptViewer:
+    """
+    Responsable SOLO de leer y mostrar el código.
+    """
+
+    def show(self, script_path: Path) -> Optional[str]:
+        # #:MEJORA 6: Leemos con UTF-8 para evitar los errores con tildes/ñ.
+        try:
+            if not script_path.is_file():
+                print("Archivo no encontrado.")
+                return None
+
+            code = script_path.read_text(encoding="utf-8")
+            print(f"\n--- Código de {script_path.name} ---\n")
+            print(code)
+            return code
+
+        except UnicodeDecodeError:
+            print("Error de codificación al leer el archivo (no es UTF-8).")
+        except Exception as e:
+            print(f"Error al leer el archivo: {e}")
         return None
 
 
-def mostrar_codigo(ruta_script: Path) -> bool:
-    # :MEJORA 6: Separación de responsabilidades:
-    #           leer_codigo() lee, mostrar_codigo() imprime y decide si fue exitoso.
-    codigo = leer_codigo(ruta_script)
-    if codigo is None:
-        return False
+# =========================
+# EJECUTOR
+# =========================
+class ScriptRunner:
+    """
+    Responsable SOLO de ejecutar scripts.
+    """
 
-    print(f"\n--- Código de {ruta_script.name} ---\n")
-    print(codigo)
-    return True
+    def __init__(self) -> None:
+        # #:MEJORA 7: Usamos el mismo Python que ejecuta este dashboard.
+        self.python = sys.executable
 
-
-def ejecutar_codigo(ruta_script: Path) -> None:
-    # :MEJORA 7: Ejecutamos con el mismo intérprete de Python que corre este dashboard (sys.executable),
-    #           así evitamos problemas de "python" vs "python3" o entornos virtuales.
-    try:
-        python_exe = sys.executable
-
-        # :MEJORA 8: Abrimos una nueva terminal según el sistema operativo, de forma más clara.
-        if os.name == "nt":  # Windows
-            # Abre CMD y deja la ventana abierta (/k)
-            subprocess.Popen(["cmd", "/k", python_exe, str(ruta_script)])
-        else:
-            # :MEJORA 9: Intentamos varias terminales comunes en Linux/Mac.
-            #           Si no hay terminal disponible, ejecutamos en la misma consola.
-            terminales = [
-                ["xterm", "-hold", "-e"],
-                ["gnome-terminal", "--"],
-                ["konsole", "-e"],
-                ["mate-terminal", "-e"],
-                ["xfce4-terminal", "-e"],
-            ]
-
-            for t in terminales:
-                try:
-                    subprocess.Popen(t + [python_exe, str(ruta_script)])
-                    return
-                except FileNotFoundError:
-                    continue
-
-            # Si no se encontró una terminal gráfica, ejecuta en la consola actual
-            # (esto funciona en cualquier Unix si estás en una terminal ya abierta).
-            subprocess.run([python_exe, str(ruta_script)], check=False)
-
-    except Exception as e:
-        print(f"Ocurrió un error al ejecutar el código: {e}")
-
-
-def pedir_opcion(mensaje: str) -> str:
-    # :MEJORA 10: Función para pedir input y limpiar espacios, evita errores por entradas con espacios.
-    return input(mensaje).strip()
-
-
-def listar_carpetas(ruta: Path) -> list[Path]:
-    # :MEJORA 11: Listado ordenado alfabéticamente para que el menú sea consistente.
-    return sorted([p for p in ruta.iterdir() if p.is_dir()], key=lambda x: x.name.lower())
-
-
-def listar_scripts_py(ruta: Path) -> list[Path]:
-    # :MEJORA 12: Listado ordenado de scripts .py
-    return sorted([p for p in ruta.iterdir() if p.is_file() and p.suffix == ".py"], key=lambda x: x.name.lower())
-
-
-def mostrar_menu():
-    # :MEJORA 13: Mantenemos un diccionario claro para unidades, pero con rutas reales.
-    unidades = {
-        "1": BASE_DIR / "Unidad 1",
-        "2": BASE_DIR / "Unidad 2",
-    }
-
-    while True:
-        print("\nMenu Principal - Dashboard")
-        for key, ruta in unidades.items():
-            print(f"{key} - {ruta.name}")
-        print("0 - Salir")
-
-        eleccion = pedir_opcion("Elige una unidad o '0' para salir: ")
-
-        if eleccion == "0":
-            print("Saliendo del programa.")
-            return
-
-        if eleccion not in unidades:
-            print("Opción no válida. Por favor, intenta de nuevo.")
-            continue
-
-        ruta_unidad = unidades[eleccion]
-
-        # :MEJORA 14: Validamos existencia de la carpeta unidad antes de entrar.
-        if not ruta_unidad.exists():
-            print(f"No existe la carpeta: {ruta_unidad}")
-            continue
-
-        mostrar_sub_menu(ruta_unidad)
-
-
-def mostrar_sub_menu(ruta_unidad: Path):
-    sub_carpetas = listar_carpetas(ruta_unidad)
-
-    # :MEJORA 15: Si no hay subcarpetas, avisamos en lugar de mostrar un menú vacío.
-    if not sub_carpetas:
-        print(f"\nNo hay subcarpetas dentro de: {ruta_unidad.name}")
-        return
-
-    while True:
-        print(f"\nSubmenú - {ruta_unidad.name}")
-        for i, carpeta in enumerate(sub_carpetas, start=1):
-            print(f"{i} - {carpeta.name}")
-        print("0 - Regresar al menú principal")
-
-        eleccion = pedir_opcion("Elige una subcarpeta o '0' para regresar: ")
-
-        if eleccion == "0":
-            return
-
-        # :MEJORA 16: Validación de número sin reventar el programa.
-        if not eleccion.isdigit():
-            print("Opción no válida. Debes ingresar un número.")
-            continue
-
-        idx = int(eleccion) - 1
-        if not (0 <= idx < len(sub_carpetas)):
-            print("Opción no válida. Por favor, intenta de nuevo.")
-            continue
-
-        mostrar_scripts(sub_carpetas[idx])
-
-
-def mostrar_scripts(ruta_sub_carpeta: Path):
-    while True:
-        scripts = listar_scripts_py(ruta_sub_carpeta)
-
-        print(f"\nScripts - {ruta_sub_carpeta.name}")
-        if not scripts:
-            # :MEJORA 17: Si no hay scripts, lo informamos.
-            print("No hay scripts .py en esta carpeta.")
-            print("0 - Regresar al submenú anterior")
-            eleccion = pedir_opcion("Elige '0' para regresar: ")
-            if eleccion == "0":
-                return
-            continue
-
-        for i, script in enumerate(scripts, start=1):
-            print(f"{i} - {script.name}")
-
-        print("0 - Regresar al submenú anterior")
-        print("9 - Regresar al menú principal")
-
-        eleccion = pedir_opcion("Elige un script, '0' para regresar o '9' para menú principal: ")
-
-        if eleccion == "0":
-            return
-        if eleccion == "9":
-            # :MEJORA 18: Retornamos para volver al menú principal sin romper el flujo.
-            return
-
-        if not eleccion.isdigit():
-            print("Opción no válida. Debes ingresar un número.")
-            continue
-
-        idx = int(eleccion) - 1
-        if not (0 <= idx < len(scripts)):
-            print("Opción no válida. Por favor, intenta de nuevo.")
-            continue
-
-        ruta_script = scripts[idx]
-        ok = mostrar_codigo(ruta_script)
-
-        if ok:
-            ejecutar = pedir_opcion("¿Desea ejecutar el script? (1: Sí, 0: No): ")
-            if ejecutar == "1":
-                ejecutar_codigo(ruta_script)
-            elif ejecutar == "0":
-                print("No se ejecutó el script.")
+    def run(self, script_path: Path) -> None:
+        try:
+            # #:MEJORA 8: Ejecutamos en terminal aparte si se puede (Windows),
+            #            y si no, ejecutamos en la misma consola.
+            if os.name == "nt":
+                subprocess.Popen(["cmd", "/k", self.python, str(script_path)])
             else:
-                print("Opción no válida. Regresando al menú de scripts.")
+                subprocess.run([self.python, str(script_path)], check=False)
 
-        input("\nPresiona Enter para volver al menú de scripts.")
+        except Exception as e:
+            print(f"Error al ejecutar el script: {e}")
 
 
-# Ejecutar el dashboard
+# =========================
+# INTERFAZ DE USUARIO
+# =========================
+class MenuUI:
+    """
+    Responsable SOLO de mostrar menús y pedir opciones.
+    """
+
+    def show_menu(self, title: str, options: List[str], extra: List[str]) -> str:
+        print(f"\n{title}")
+        for i, opt in enumerate(options, start=1):
+            print(f"{i} - {opt}")
+        for line in extra:
+            print(line)
+        # #:MEJORA 9: strip() para evitar problemas por espacios.
+        return input("Seleccione una opción: ").strip()
+
+
+# =========================
+# APLICACIÓN PRINCIPAL
+# =========================
+class DashboardApp:
+    """
+    Controlador principal del programa.
+    """
+
+    def __init__(self, base_dir: Path) -> None:
+        self.repo = ScriptRepository(base_dir)
+        self.viewer = ScriptViewer()
+        self.runner = ScriptRunner()
+        self.ui = MenuUI()
+
+    def run(self) -> None:
+        while True:
+            unidades = self.repo.get_unidades()
+            if not unidades:
+                print("No se encontraron carpetas (unidades) en la ruta base.")
+                print(f"Ruta base actual: {self.repo.base_dir}")
+                return
+
+            choice = self.ui.show_menu(
+                "Menú Principal - Dashboard",
+                [u.name for u in unidades],
+                ["0 - Salir"]
+            )
+
+            if choice == "0":
+                print("Saliendo del programa.")
+                return
+
+            idx = self._to_index(choice, len(unidades))
+            if idx is None:
+                print("Opción inválida.")
+                continue
+
+            self._unidad_menu(unidades[idx])
+
+    def _unidad_menu(self, unidad_dir: Path) -> None:
+        while True:
+            sub = self.repo.get_subcarpetas(unidad_dir)
+            if not sub:
+                print(f"No hay subcarpetas dentro de: {unidad_dir.name}")
+                return
+
+            choice = self.ui.show_menu(
+                f"Unidad: {unidad_dir.name}",
+                [s.name for s in sub],
+                ["0 - Regresar"]
+            )
+
+            if choice == "0":
+                return
+
+            idx = self._to_index(choice, len(sub))
+            if idx is None:
+                print("Opción inválida.")
+                continue
+
+            self._scripts_menu(sub[idx])
+
+    def _scripts_menu(self, carpeta_dir: Path) -> None:
+        while True:
+            scripts = self.repo.get_scripts(carpeta_dir)
+            if not scripts:
+                print("No hay scripts .py en esta carpeta.")
+                return
+
+            choice = self.ui.show_menu(
+                f"Scripts en {carpeta_dir.name}",
+                [s.name for s in scripts],
+                ["0 - Regresar"]
+            )
+
+            if choice == "0":
+                return
+
+            idx = self._to_index(choice, len(scripts))
+            if idx is None:
+                print("Opción inválida.")
+                continue
+
+            script_path = scripts[idx].path
+            if self.viewer.show(script_path):
+                if input("¿Ejecutar? (1=Sí / 0=No): ").strip() == "1":
+                    self.runner.run(script_path)
+
+            input("\nPresiona Enter para continuar...")
+
+    @staticmethod
+    def _to_index(choice: str, size: int) -> Optional[int]:
+        # #:MEJORA 10: Conversión segura de opción a índice.
+        try:
+            idx = int(choice) - 1
+            if 0 <= idx < size:
+                return idx
+        except ValueError:
+            pass
+        return None
+
+
+# =========================
+# PUNTO DE ENTRADA
+# =========================
 if __name__ == "__main__":
-    # :MEJORA 19: Punto de entrada claro, solo llama al menú principal.
-    mostrar_menu()
+    # #:MEJORA 11: Solo un entrypoint (sin duplicados ni conflictos).
+    app = DashboardApp(BASE_DIR)
+    app.run()
